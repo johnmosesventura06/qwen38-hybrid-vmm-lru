@@ -2,13 +2,16 @@
 
 ### ~56 tok/s decode · 1,745 tok/s prefill @3k · 2,053 @32k · 495K context
 
+*Decode bars are single-stream; the lane itself serves **np=2** (two concurrent sequences) —
+see §2 for what that does and does not buy.*
+
 A 125B-class MoE does not fit on 4×16 GB consumer cards: 62.8 GB of int4 experts have to
 live in host RAM, and only about 44 of 512 experts per layer can sit in VRAM at once. The
 usual consequence is picking one speed — fast prefill *or* fast decode. This lane gets both
 by giving **one expert tier two access paths**: a contiguous CUDA-VMM view for prefill, and a
 dynamic LRU mirror for decode, sharing the same 44 VRAM rows instead of pinning two copies.
 
-*(Internal name: golden-v2.0 hybrid tier.)*
+*(Internal name: golden-v2.0 tier, currently locked at tag golden-v2.1 — same runtime, docs only.)*
 
 **Reproducibility note:** everything that runs the lane is in this repo except **one file** —
 the FlashInfer GDN prefill gate for SM12x, which comes from a recipe whose repository publishes
@@ -94,11 +97,21 @@ third-party licensing question anywhere in it.)
 | CPU / RAM | 32-core, 128 GB DDR5 (4×32, ~120 GiB usable) — the box is deliberately RAM-rich, VRAM-poor |
 | Model | Qwen3.8-Flash-Next, 125B-class MoE (~A6B), W4A16 int4 experts + FP8 PLE + an n-gram (PLE) table |
 | Engine | vLLM (private vendor build `0.1.dev20073+g8e685d198`, torch 2.13.0+cu130, flashinfer 0.6.17, humming-kernels 0.1.12) |
-| Parallelism | TP4 + EP4, np=1 serving, batch-2 CUDA graphs, MTP off, vision tower mounted |
+| Parallelism | TP4 + EP4, **np=2** serving (`max_num_seqs=2`, CUDA-graph capture sizes `[1,2]`, `FULL_DECODE_ONLY`), MTP off, vision tower mounted |
 | Context | 495K tokens (YaRN), 517,858-token KV pool (1.05×) |
 
 Expert layout per layer per rank: 128 local experts; the top 44 by an offline traffic
 ranking are treated as "hot". Everything about this work is about where those rows live.
+
+**On np=2 and why no two-stream number is published here.** The lane accepts two concurrent
+sequences, and batch-2 decode steps run graphed thanks to the pinned capture sizes. But this
+lane is bound by PCIe traffic for the non-resident experts, not by spare compute, so a second
+stream mostly *shares* the same bandwidth and KV pool rather than doubling throughput — expect
+sublinear aggregate gain, and size your concurrency against latency goals rather than assuming
+2×. We deliberately did not put a measured 2-stream figure in this document: the only rig these
+numbers come from was carrying an interactive session whenever we tried, and a concurrency
+number recorded while another stream is live is worse than no number. `benchmarks/hybrid-vmm-lru/`
+has the single-stream shapes; fire two of them at an **idle** lane if you want the real figure.
 
 ---
 
