@@ -16,3 +16,10 @@ __pycache__/
 *.pth
 *.onnx
 *.log
+
+# local config + rollback litter: never tracked (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+*.bak
+*.bak-*

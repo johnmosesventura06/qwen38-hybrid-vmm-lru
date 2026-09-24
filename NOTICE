@@ -1,0 +1,56 @@
+qwen38-flash-next hybrid expert tier
+Copyright (c) 2026 johnmosesventura
+
+This product includes software developed by the vLLM project
+(Copyright 2025 The vLLM Project Authors, Apache License 2.0,
+https://github.com/vllm-project/vllm), patched and packaged as
+qwen38-flash-next-2x3090 by Dominik Bucko
+(https://github.com/DominikBucko/qwen38-flash-next-2x3090).
+This repository is an unofficial fork of that project.
+
+Files we modified relative to that fork (Apache-2.0; upstream vLLM
+copyright and SPDX headers preserved in each):
+  scripts/docker_serve.sh                       arm switching, env-driven asset roots
+  scripts/serve-container.sh                    hybrid arm, KV tier, vision/async knobs
+  fn-ext/.../compressed_tensors_moe_wna16.py    the hybrid VMM+LRU tier (this work)
+  fn-ext/.../quantization/auto_gptq.py          VMM shim for the AutoRound loader
+  fn-ext/.../nvidia/qsa.py, .../nvidia/ops/qsa.py  fp8-KV port of upstream vLLM PR #55557
+  fn-ext/v1/worker/gpu/cudagraph_utils.py,
+  fn-ext/v1/worker/gpu/model_runner.py          batch-2 CUDA-graph capture
+  fn-ext/.../nvidia/ple_layer.py,
+  ple-ext/nvfp4/**                              PLE (n-gram table) offload tiers
+
+Distributed here, and the basis for that:
+  fn-ext/distributed/device_communicators/custom_all_reduce.py
+  fn-ext/distributed/device_communicators/cuda_communicator.py
+  Verified against a fresh extract of the pinned runtime image: these are the
+  vLLM Apache-2.0 files plus purely ADDITIVE changes (no baseline line removed).
+  The additions are an env-gated override that keeps custom all-reduce enabled
+  on more than two PCIe-only GPUs (VLLM_CUSTOM_AR_ALLOW_PCIE=1), and a call
+  site that routes small all-gathers to vLLM's own custom_all_gather() /
+  should_custom_all_gather() API, which already exists in the baseline.
+  Knowing that routing those all-gathers is worth turning on came from recipe
+  r10 of QWEN-PEDIA by abtraore (https://github.com/abtraore/QWEN-PEDIA), and
+  the comment in cuda_communicator.py says so. Copyright protects the
+  expression, not the idea; the expression here is vLLM's plus ours.
+
+Not distributed here, deliberately:
+  fn-ext/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py
+  Its FlashInfer GDN prefill gate for SM12x, and an optional fused
+  input-projection arm, came from that same r10 recipe. That repository
+  publishes no license file, and unlicensed public code is "all rights
+  reserved" by default - credit does not create a right to copy it, and
+  renaming the file would not change what the code is. The fused
+  input-projection arm is opt-in (VLLM_GDN_FUSE_IN_PROJ=1) and was never
+  enabled here, so no published number depends on it. To recover the SM12x
+  prefill gain yourself: ask the author to add a license, or widen the
+  FlashInfer condition in the fork's own Apache-2.0 copy of that file
+  (runtime/vllm-overlay/...), which already enables that kernel on SM10x.
+  Our README measurements were taken with this overlay present.
+
+No model weights are distributed by this repository. The checkpoint this
+lane consumes is governed by the Qwen Community License 1.0
+(https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/LICENSE) plus the
+terms of the Intel AutoRound and RadixArk quantizations, which inherit the
+Qwen terms. The assembly scripts copy the upstream model license into the
+output tree; keep it there.

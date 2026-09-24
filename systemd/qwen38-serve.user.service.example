@@ -1,0 +1,38 @@
+# User-level service for the TP4 hybrid lane (the flow that reads ./.env and calls
+# scripts/serve-container.sh). Upstream ships a system-level unit that calls
+# scripts/docker_serve.sh with an EnvironmentFile — use that one if you prefer a
+# root service; this template is the unprivileged equivalent.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   sed -e 's#@REPO@#/home/you/qwen38-flash-next#' \
+#       -e 's#@LOG@#/home/you/lane.log#' \
+#       systemd/qwen38-serve.user.service.example > ~/.config/systemd/user/qwen38-serve.service
+#   systemctl --user daemon-reload && systemctl --user enable --now qwen38-serve
+#
+# WARNING: do NOT run `systemd-analyze verify` on a user unit — with a user unit it
+# executes ExecStart as a side effect of verification, i.e. it boots the lane.
+[Unit]
+Description=qwen38-flash-next hybrid expert-tier lane
+After=docker.service
+Requires=docker.service
+# List every mount backing MODEL_DIR / MODELS_DIR (the PLE tables live there).
+# Without this the unit can race the automount and fail with a missing-checkpoint error.
+RequiresMountsFor=@REPO@
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+# $XDG_RUNTIME_DIR must be explicit for --user services started outside a login session.
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=/bin/bash -c '@REPO@/local-start.sh >> @LOG@ 2>&1'
+Restart=on-failure
+RestartSec=15
+# Cold boots run for minutes (weight load + PLE table + CUDA-graph capture). Without
+# this, systemd times out and restart-loops the lane.
+TimeoutStartSec=3600
+TimeoutStopSec=180
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

@@ -4,4 +4,5 @@
 !configs/2x3090-128gb.env
 !configs/static_hot_cache_rankings.json
 !scripts/serve-container.sh
+!scripts/check_custom_all_reduce.py
 !tests/test_qsa_exact_topk_cpu.py
